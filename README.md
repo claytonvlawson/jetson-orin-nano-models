@@ -1,4 +1,4 @@
-# Jetson Orin Nano Super — local model setup
+# Jetson Orin Nano Super — Local Model Setup
 
 How three GGUF models were added to a Jetson Orin Nano Super Developer Kit (8 GB
 unified memory), served behind one `llama.cpp` router, and kept inside the memory
@@ -7,7 +7,7 @@ budget. Everything here was run on the board; numbers are measured, not estimate
 Board: `snowbeach` — Jetson Orin Nano Super Developer Kit, aarch64, Ubuntu 22.04,
 JetPack R36.4.3, CUDA 12.6, 8 GB unified LPDDR5.
 
-## Storage reality check
+## Storage 
 
 The kit boots from the 512 GB microSD card; the NVMe drive is secondary storage.
 
@@ -24,7 +24,7 @@ Models live under `/home/snowbeach/models` (microSD, root filesystem). They were
 deliberately *not* put on the NVMe so a card swap does not lose them, and because
 root has more headroom.
 
-## The three models
+## The Three Models
 
 | Alias | File | Quant | Size | Source |
 |---|---|---|---|---|
@@ -32,16 +32,16 @@ root has more headroom.
 | `deepseek-v4pro-9b` | `deepseek-v4pro-9b.gguf` | i1 Q4_K_M | 5.63 GB | [mradermacher/DeepSeek-V4-Pro-Qwen3.5-9B-UNCENSORED-heretic-i1-GGUF](https://huggingface.co/mradermacher/DeepSeek-V4-Pro-Qwen3.5-9B-UNCENSORED-heretic-i1-GGUF) |
 | `qwen35-4b-heretic` | `qwen35-4b-heretic.gguf` | Q4_K_M | 2.71 GB | [mradermacher/Qwen3.5-4B-heretic-GGUF](https://huggingface.co/mradermacher/Qwen3.5-4B-heretic-GGUF) |
 
-What each one is:
+What Each One Is:
 
-- **hermes3-8b** — Hermes 3 Llama 3.1 8B, loRA-ablated, then imatrix-quantized by
+- **Hermes3-8b** — Hermes 3 Llama 3.1 8B, loRA-ablated, then imatrix-quantized by
   bartowski. The most reliable general chat model of the three. Loads to 99 GPU
   layers without complaint, so it gets the full card.
-- **deepseek-v4pro-9b** — DeepSeek-V4-Pro distilled into Qwen3.5-9B, then
+- **Deepseek-v4pro-9b** — DeepSeek-V4-Pro distilled into Qwen3.5-9B, then
   "heretic" refusal-ablated (ARA). 8.95 B params, 32 transformer layers, hybrid
   linear+full attention, native 262K context. The strongest reasoner here, and the
   only one that cannot fit entirely in 8 GB at Q4_K_M.
-- **qwen35-4b-heretic** — Qwen3.5-4B, language tower ablated (vision encoder left
+- **Qwen35-4b-heretic** — Qwen3.5-4B, language tower ablated (vision encoder left
   alone). 4 B params, 32K context fits comfortably, so it gets `ngl 99` and a much
   larger context window than the other two.
 
@@ -123,7 +123,7 @@ The 9B quant name in this repo follows mradermacher's `.i1-Q4_K_M` suffix, while
 4B and 8B use plain `-Q4_K_M`. Check the actual filename in the repo's file list
 before downloading; renaming after download is fine.
 
-## 3. Tune for 8 GB — the actual hard part
+## 3. Tune for 8 GB — The Actual Hard Part
 
 Three constraints drive every flag:
 
@@ -136,7 +136,7 @@ Three constraints drive every flag:
 3. **KV cache is the second-largest allocation.** Quantizing it to `q8_0` roughly
    halves it versus f16 and is the difference between fitting and not.
 
-### What fit, per model
+### What Fit, Per Model
 
 | Alias | GPU layers | Context | KV cache | Extra |
 |---|---|---|---|---|
@@ -153,7 +153,7 @@ allocation fails.
 The 4B gets a 32K context precisely because it is small enough to afford it, and
 that is where it earns its place — long document reads that the 8B and 9B cannot do.
 
-## 4. Serve all three behind one port
+## 4. Serve All Three Behind One Port
 
 `llama-server` in router mode keeps one model resident (`--models-max 1`) and
 hot-swaps on request. That is the only sane way to expose three models on 8 GB:
@@ -231,7 +231,7 @@ A cold swap costs the full load time of the target model; the first request afte
 swap is the slow one. Anything latency-sensitive should pin its model and not let
 the router evict it.
 
-## Reaching it from a laptop
+## Reaching it From a Laptop
 
 The router only listens on the board. On the Mac, forward it and open the web UI:
 
@@ -273,7 +273,7 @@ start, or put it in a timer.
 | `scripts/reclaim-free-pages.py` | Forces page-cache reclaim to defragment the CUDA allocator |
 | `scripts/start-deepseek.sh` | Single-model launcher with the ngl fallback ladder |
 
-## Licence and model terms
+## Licence and Model Terms
 
 The scripts here are yours to reuse. The models carry their own licences — check
 each Hugging Face repo. The two "heretic" builds are refusal-ablated: they will

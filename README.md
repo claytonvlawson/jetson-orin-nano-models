@@ -24,9 +24,44 @@ The NVMe in this build is 256 GB class, not 8 GB — the "8 GB" in the kit name 
 the unified RAM. Keep that straight: 8 GB is the hard ceiling on what can be
 resident, and storage is not the constraint.
 
-Models live under `/home/snowbeach/models` (microSD, root filesystem). They were
-deliberately *not* put on the NVMe so a card swap does not lose them, and because
-root has more headroom.
+Models live under `/home/snowbeach/models` (microSD, root filesystem), not on the NVMe.
+The original reason was that a card swap does not lose them and root has more headroom.
+**That tradeoff was reversed on 2026-11-12 for the four served GGUFs** — see
+[Cold loads](#cold-loads-why-the-ggufs-moved-to-nvme) for the measurements and the
+symlink scheme. Weights now live on the NVMe; the presets still reference
+`~/models/router/*.gguf`, which are symlinks. A card swap no longer protects the model
+files, and an NVMe failure now takes them with it; keeping a copy elsewhere is on you.
+Downloads and non-served files still go to `/home`.
+
+### Cold loads: why the GGUFs moved to NVMe
+
+Load time on a router is `file size / disk read speed`. This board's microSD does
+**47.7 MB/s**; its NVMe does **2.5 GB/s** — 52x. With `--models-max 1` and
+`load-mode = none` every model pick is a straight physical read of the whole file, so
+the card, not the GPU, set the latency:
+
+| Model | File | Cold load on microSD | Cold load on NVMe |
+|---|---|---|---|
+| `dory-4b` | 3.5 GB | 48.8 s (measured) | **10.4 s** |
+| `deepseek-v4pro-9b` | 5.3 GB | 71 s (README, pre-move) | **12.4 s** |
+| `hermes3-8b` | 4.6 GB | 65 s (README, pre-move) | **11.2 s** |
+
+The cutover is a symlink swap, so nothing but the bytes moved: presets keep their
+paths, the systemd unit is untouched, no restart or root needed, and an already-running
+child is unaffected because it holds an open fd. `scripts/move_models_to_nvme.sh` does it
+and is safe to re-run — it copies, verifies sha256 on both copies, and only then deletes
+the original and links:
+
+```
+~/models/router/<name>.gguf  ->  /mnt/nvme/models/router/<name>.gguf
+~/models/dory/Dory1.0-4B...gguf -> /mnt/nvme/models/router/NVIDIA-Nemotron-Labs-Dory1.0-4B-Q5_K_M.gguf
+```
+
+`/mnt/nvme` is in `/etc/fstab` with `nofail`, so the links survive a reboot; a failed NVMe
+mount leaves them dangling (the mount is `generated` per `systemctl is-enabled`, i.e.
+fstab owns it — do not symlink before checking that).
+
+Rollback: `cp` the file back out of `/mnt/nvme` and replace the symlink with it.
 
 ## The Models
 
@@ -354,9 +389,11 @@ Reading the table:
   the tradeoff `dory.num_loops` exists to expose.
 - **Prefill runs 2–3× generation throughput** and rises with prompt length: the 4B
   goes 380 → 474 tok/s between a 514- and a 2203-token prompt.
-- **Cold load is the router's real cost.** Swapping from the 4B to the 9B costs 71 s
-  of waiting, so anything latency-sensitive should pin its model rather than let
-  `--models-max 1` evict it.
+- **Cold load is the router's real cost.** Swapping from the 4B to the 9B cost 71 s of
+  waiting on the microSD; after the 2026-11-12 move to NVMe it is 10-12 s for every model
+  (see [Cold loads](#cold-loads-why-the-ggufs-moved-to-nvme)). The `Cold load` column above
+  is the pre-move measurement. Anything latency-sensitive should still pin its model rather
+  than let `--models-max 1` evict it, but the penalty for switching is now ~11 s, not ~70.
 - **KV cost per token**, measured: 17 KiB for the 4B, 66 KiB for the 8B, 17 KiB for
   the 9B (hybrid linear attention), 52 KiB for Dory at f16. That is why the 8B hits
   its wall at 8K while the 9B Q2 reaches 76K.
@@ -456,6 +493,12 @@ seconds, retry. If it fails three times at the same size, that config really doe
 not fit: back off the context first, then `ngl`. On this board context is almost
 always the cheaper thing to give up.
 
+Measured again 2026-11-12: `hermes3-8b` at its documented `ngl = 32` (4271 MiB model
+buffer) failed the KV `cudaMalloc` (263 MiB) right after a `5000` reclaim, and loaded
+first try after `6000`. A 5.3 GB `deepseek-v4pro-9b` load had already put its file size
+back in page cache, so the reclaim target has to cover the model you just evicted plus
+the one you are loading — size it against the larger of the two, not a fixed 5000.
+
 **Load succeeds, the first long prompt kills the server.**
 Prefill allocates its own compute buffers on top of weights + KV. Leave 700–900 MiB
 of headroom past the KV size, or cut `ub`.
@@ -506,12 +549,13 @@ Not done:
 | `scripts/start-router.sh` | Router launcher with page-reclaim and readiness polling |
 | `scripts/router-presets.ini` | Per-model flags and shared 8 GB tuning |
 | `scripts/reclaim-free-pages.py` | Forces page-cache reclaim to defragment the CUDA allocator |
+| `scripts/move_models_to_nvme.sh` | Copies the served GGUFs to the NVMe, sha256-verifies, leaves symlinks (see §Storage) |
 | `scripts/start-deepseek.sh` | Single-model launcher with the ngl fallback ladder |
 | `scripts/bench-model.py` | Load time, buffers, RSS, prefill and generation tok/s for one model |
 | `scripts/survey-ceiling.py` | Layer-count and context ceiling search, with retries |
 | `scripts/survey-dory.py` | The same search against the Dory fork's `llama-server` |
 | `scripts/bench-dory.py` | Dory throughput at a given loop count |
-| `results/` | Raw JSON from the runs behind every number in this README |
+| `results/` | Raw JSON from the runs behind every number in this README, plus `nvme-move.log` (the verified copy/link run) |
 
 ## Licence and Model Terms
 

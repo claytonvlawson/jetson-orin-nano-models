@@ -1,0 +1,13 @@
+[12:49:39] COPY deepseek-v4pro-9b.gguf (5.3G)
+[12:52:20] HASH OK deepseek-v4pro-9b.gguf
+[12:52:20] SYMLINKED /home/snowbeach/models/router/deepseek-v4pro-9b.gguf -> /mnt/nvme/models/router/deepseek-v4pro-9b.gguf
+[12:52:20] COPY hermes3-8b.gguf (4.6G)
+[12:54:41] HASH OK hermes3-8b.gguf
+[12:54:41] SYMLINKED /home/snowbeach/models/router/hermes3-8b.gguf -> /mnt/nvme/models/router/hermes3-8b.gguf
+[12:54:41] COPY qwen35-4b-heretic.gguf (2.6G)
+[12:55:58] HASH OK qwen35-4b-heretic.gguf
+[12:55:58] SYMLINKED /home/snowbeach/models/router/qwen35-4b-heretic.gguf -> /mnt/nvme/models/router/qwen35-4b-heretic.gguf
+[12:55:58] COPY NVIDIA-Nemotron-Labs-Dory1.0-4B-Q5_K_M.gguf (3.5G)
+[12:57:43] HASH OK NVIDIA-Nemotron-Labs-Dory1.0-4B-Q5_K_M.gguf
+[12:57:43] SYMLINKED /home/snowbeach/models/dory/NVIDIA-Nemotron-Labs-Dory1.0-4B-Q5_K_M.gguf -> /mnt/nvme/models/router/NVIDIA-Nemotron-Labs-Dory1.0-4B-Q5_K_M.gguf
+[12:57:43] DONE

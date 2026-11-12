@@ -1,0 +1,6 @@
+  ngl=28 ctx=4096 -> OK (72.8s)
+  ngl=28 ctx=8192 -> fail (73.7s)
+  ngl=28 ctx=6144 -> OK (73.7s)
+  ngl=28 ctx=7168 -> fail (71.7s)
+  ngl=28 ctx=6144 -> OK (71.2s)
+{"alias": "deepseek-v4pro-9b-q4-ngl28", "max_ngl": 28, "max_ctx": 6144, "load_s_at_ceiling": 71.2, "attempts": [{"ngl": 28, "ctx": 4096, "ok": true, "load_s": 72.8}, {"ngl": 28, "ctx": 8192, "ok": false, "load_s": 73.7}, {"ngl": 28, "ctx": 6144, "ok": true, "load_s": 73.7}, {"ngl": 28, "ctx": 7168, "ok": false, "load_s": 71.7}, {"ngl": 28, "ctx": 6144, "ok": true, "load_s": 71.2}]}

@@ -123,7 +123,7 @@ The 9B quant name in this repo follows mradermacher's `.i1-Q4_K_M` suffix, while
 4B and 8B use plain `-Q4_K_M`. Check the actual filename in the repo's file list
 before downloading; renaming after download is fine.
 
-## 3. Tune for 8 GB — The Actual Hard Part
+## 3. Tune for 8 GB
 
 Three constraints drive every flag:
 

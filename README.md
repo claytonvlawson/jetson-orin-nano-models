@@ -264,6 +264,28 @@ board is deliberately throttled; Super mode gives more headroom at higher draw.
 Same fragmentation. The reclaim script exists for this; run it before each router
 start, or put it in a timer.
 
+## Status: what works, what is not done
+
+Working, measured on the board: the CUDA build, all three models loading and
+answering behind one router, per-model `ngl` ladders, the page-reclaim step, and
+the readiness polling in `start-router.sh`. This is the setup that has been
+serving this board since November 2026.
+
+Not done:
+
+1. **Uptime is days, not weeks.** The honest finding in Troubleshooting:
+   everything works, then allocation fails after a few days. The reclaim script
+   exists but is not wired to a timer here.
+2. **No automated test.** The verification is the transcript in the README plus
+   `start-router.sh`'s readiness poll. A script that loads each model and asks
+   one question would turn the numbers into a check; it is not written.
+3. **One board, one JetPack version.** R36.4.3 is what these numbers come from.
+   A different L4T release may pick a different `sm` target for the CUDA build.
+4. **No token/serving benchmark.** Throughput is not measured, only memory fit.
+5. **Presets are hand-tuned.** `router-presets.ini` is the result of trying
+   values on this board, not a derived rule; another 8 GB board may need
+   different numbers.
+
 ## Files in this repo
 
 | Path | What |

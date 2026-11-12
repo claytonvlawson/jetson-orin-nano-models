@@ -1,4 +1,4 @@
-# Jetson Orin Nano Super — Local Model Setup
+# Jetson Orin Nano Super  *Local Model Setup
 
 How three GGUF models were added to a Jetson Orin Nano Super Developer Kit (8 GB
 unified memory), served behind one `llama.cpp` router, and kept inside the memory

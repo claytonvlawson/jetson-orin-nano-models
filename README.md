@@ -7,6 +7,9 @@ budget. Everything here was run on the board; numbers are measured, not estimate
 Board: `snowbeach` — Jetson Orin Nano Super Developer Kit, aarch64, Ubuntu 22.04,
 JetPack R36.4.3, CUDA 12.6, 8 GB unified LPDDR5, power mode `MAXN_SUPER`.
 
+**Version 1.1.0** — adds the autocompact context guard (§5) and the LAN-first
+tunnel. See [CHANGELOG.md](CHANGELOG.md).
+
 Measured on llama.cpp build `10291 (7e30f3adb)` for the Qwen and DeepSeek builds,
 and on the Dory fork build `1 (98a74c9)` for Dory — see
 [Measured performance](#measured-performance).
@@ -361,6 +364,81 @@ page cache — which is the whole point of §3a.
 `jinja = true` turns on the model's embedded chat template. Without it, tool calls
 and the reasoning-channel formatting break for the 9B.
 
+## 5. Autocompact: keeping long chats inside the window
+
+A 32768-token window is not enough for a working chat. The failure is blunt:
+
+```
+request (33581 tokens) exceeds the available context size (32768 tokens),
+try increasing it
+```
+
+Raising `c` is not an option — §3 and §3a are the measurements that say so. The
+answer is to compact instead of to grow: a small proxy sits in front of the router,
+counts the prompt with the model's own tokenizer, and when the conversation crosses
+a threshold it folds the older turns into a markdown checkpoint and continues in a
+fresh window.
+
+`scripts/context_guard.py` is that proxy. It listens on `127.0.0.1:8090` and
+forwards to the router on `127.0.0.1:8080`:
+
+1. counts the request with `POST /tokenize` (the model's tokenizer, not a
+   character estimate);
+2. if the prompt is over the trigger, folds the older messages into a summary and
+   writes `~/contexts/compact-YYYYmmdd-HHMMSS.md` — YAML frontmatter
+   (`tokens_before`, `tokens_after`, `messages_folded`, `messages_kept`), then
+   Goal / Decisions / Artifacts / Tried and Failed / Open Questions / Next Step,
+   then the full folded transcript;
+3. rewrites the request as system prompt + compacted block + the last
+   `keep_recent_messages` turns, and streams the reply back.
+
+Everything else passes through untouched: same OpenAI-compatible surface, same
+streaming, same tool-call fields. `GET /guard/status` reports the live config and
+threshold; `X-Force-Compact: 1` forces a fold on a single request.
+
+### The trigger is absolute, not a fraction
+
+The guard originally triggered at `trigger_ratio` of the window — 0.80 of 32768 =
+26214, which is too close to the cliff to be useful. `trigger_tokens` was added in
+v1.1.0 and wins over the ratio when it is greater than zero:
+
+```json
+{ "n_ctx": 32768, "trigger_tokens": 16000, "keep_recent_messages": 6 }
+```
+
+16000 leaves room for the summarizer call, the reply, and the prefill buffers that
+§Troubleshooting warns about. Config is read at startup only, so a change needs
+`systemctl --user restart llama-context-guard`.
+
+### Two things that will bite you
+
+**The tunnel has to point at the guard, not the router.** Forwarding
+`127.0.0.1:8080 -> jetson:8080` bypasses the guard completely and hands the user the
+raw context error. Forward `-> jetson:8090` instead; then the URL the user already
+has (`http://localhost:8080/#/`) is compacted with no client change.
+
+**The guard must forward `Accept-Encoding`.** llama-server serves its web UI
+gzip-only and answers `415 Error: gzip is not supported by this browser` to clients
+that do not advertise gzip. The original `_forward()` passed only `Content-Type`,
+`Authorization` and `Accept`, so every static asset and `/sw.js` 415'd behind the
+guard and the browser UI broke. Response headers are relayed verbatim, so forwarding
+the request header is the whole fix.
+
+### Do not test it with a 30k payload
+
+A 39,079-token test folded correctly (39079 -> 11193, 13 messages, 122 KB handoff)
+and then put the board into a swap storm: ping still answered, sshd accepted TCP,
+but the banner exchange timed out and six retries over two minutes failed. Power
+cycle required. Real chats compact at 16000, well below that cliff. Verify with a
+~3k history plus `X-Force-Compact: 1`:
+
+```bash
+curl -sS -m 300 http://127.0.0.1:8080/v1/chat/completions \
+  -H 'Content-Type: application/json' -H 'X-Force-Compact: 1' \
+  -d '{"model":"qwen35-4b-heretic","messages":[...],"max_tokens":80}'
+# 3745 -> 2711 tokens, 31.5s, handoff written, reply "The trigger threshold is 16,000 tokens."
+```
+
 ## Measured performance
 
 Every number comes from `llama-server`'s own `timings` object on this board:
@@ -476,13 +554,24 @@ every probe three times, and writes `survey.jsonl`. Per-probe logs stay in
 The router only listens on the board. On the Mac, forward it and open the web UI:
 
 ```bash
-ssh -N -T -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 jetson \
-  -L 127.0.0.1:8090:127.0.0.1:8080
-# then: http://localhost:8090/
+~/bin/jetson-tunnel.sh
+# local 127.0.0.1:8080 -> jetson 127.0.0.1:8090 (context guard) -> 127.0.0.1:8080 (router)
+# then: http://localhost:8080/
 ```
 
+`scripts/jetson-tunnel.sh` is that script. It probes the LAN address
+(`10.0.0.13:22`) first and falls back to the tailnet IP, then execs ssh. The
+fallback matters: the Tailscale path between the Mac and this board drops every few
+minutes — tailscaled churns the peer endpoint between `10.0.0.181:41641` and
+`[fe80::…%en0]:41641` — and a tunnel pinned to the tailnet IP dies mid-request,
+which surfaces as "Server unavailable" in the UI and `ConnectionResetError` on long
+completions. `tailscale down && tailscale up` on the Mac clears it temporarily; the
+LAN-first script is the durable fix. launchd (`ai.hermes.jetson-llama`) runs it with
+`KeepAlive`, so every restart re-picks the best path.
+
 That is the same UI as `http://<board>:8080/`, with the model selector in the
-sidebar. `?new_chat=true#/` opens straight into a fresh chat.
+sidebar. `?new_chat=true#/` opens straight into a fresh chat. Because the tunnel
+lands on the guard, long chats compact instead of failing (§5).
 
 ## Troubleshooting
 
@@ -523,8 +612,9 @@ start, or put it in a timer.
 
 Working, measured on the board: the CUDA build, the Dory fork build, all four models
 loading and answering behind one router, per-model `ngl` ladders, the page-reclaim
-step, readiness polling in `start-router.sh`, and per-model prefill / generation /
-context ceilings from the sweep above.
+step, readiness polling in `start-router.sh`, per-model prefill / generation /
+context ceilings from the sweep above, and autocompact (§5) — a 33,581-token chat
+that used to fail now folds at 16000 and continues.
 
 Not done:
 
@@ -555,6 +645,9 @@ Not done:
 | `scripts/survey-ceiling.py` | Layer-count and context ceiling search, with retries |
 | `scripts/survey-dory.py` | The same search against the Dory fork's `llama-server` |
 | `scripts/bench-dory.py` | Dory throughput at a given loop count |
+| `scripts/context_guard.py` | Autocompact proxy: folds long chats into markdown checkpoints (§5) |
+| `scripts/guard-config.json` | Guard settings — `n_ctx`, `trigger_tokens`, `keep_recent_messages` |
+| `scripts/jetson-tunnel.sh` | Mac-side LAN-first ssh tunnel to the guard |
 | `results/` | Raw JSON from the runs behind every number in this README, plus `nvme-move.log` (the verified copy/link run) |
 
 ## Licence and Model Terms

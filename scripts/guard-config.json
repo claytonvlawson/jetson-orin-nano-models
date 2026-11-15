@@ -1,0 +1,22 @@
+{
+  "listen_host": "127.0.0.1",
+  "listen_port": 8090,
+  "upstream_host": "127.0.0.1",
+  "upstream_port": 8080,
+  "model": "",
+  "n_ctx": 32768,
+  "n_ctx_by_model": {
+    "qwen35-4b-heretic": 32768,
+    "hermes3-8b": 4096,
+    "deepseek-v4pro-9b": 4096
+  },
+  "trigger_ratio": 0.8,
+  "reserve_tokens": 768,
+  "keep_recent_messages": 6,
+  "summary_max_tokens": 1200,
+  "summary_temperature": 0.2,
+  "output_dir": "/home/snowbeach/contexts",
+  "max_compactions_per_request": 3,
+  "upstream_timeout": 900,
+  "trigger_tokens": 16000
+}

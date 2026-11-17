@@ -3,6 +3,48 @@
 Versioned changes to the Jetson Orin Nano local model setup. Numbers are measured on
 `snowbeach` (Orin Nano Super, 8 GB, JetPack R36.4.3, CUDA 12.6, `MAXN_SUPER`).
 
+## v1.2.0 — 2026-11-17
+
+Full re-verification of every number against the board. No new features; this release
+is the correction pass, and several claims in v1.0.0 and v1.1.0 did not survive it.
+
+### Fixed (numbers)
+
+- **Storage throughput was wrong in both directions.** v1.0.0 claimed microSD
+  47.7 MB/s against NVMe 2.5 GB/s (52x). Re-measured with `dd iflag=direct`, 1 GiB
+  reads: microSD **86.5 MB/s** read / 62.6 MB/s write, NVMe **1.7 GB/s** read /
+  592 MB/s write. The real ratio is ~20x. The disk table is refreshed from live `df`.
+- **Layer counts did not add up.** The README said hermes3-8b was "33/34", qwen35-4b
+  "33/33", and the 9B "32 transformer layers" followed two lines later by "34/34".
+  Block counts read out of the GGUF headers: hermes3-8b 32 (llama), the three qwen35
+  models 33, Dory 72 with `num_loops=4` in the file. With the output layer that is
+  33 or 34 tensors, and the tables now say which.
+- **Dory's "113 layers" was never captured.** No log on the board contains a runtime
+  layer count for Dory, and the GGUF says 72 blocks. The claim is withdrawn and
+  flagged as unverified rather than replaced with a guess.
+- **The served model set had changed and the README had not.** `deepseek-v4pro-9b-q2`
+  is gone from the NVMe and from the router; `deepseek-v4pro-4b-heretic` was added on
+  2026-11-15. The models table, the fit table, the ceilings table and the preset block
+  now list the five aliases that actually answer.
+- **The §4 preset block was three revisions stale.** It showed `load-mode = none`,
+  the 9B at `ngl 99`, qwen at 16384, a q2 alias, and no 4B. Replaced with the file the
+  board runs, and `scripts/router-presets.ini` in the repo is now that same file.
+
+### Added (measurements)
+
+- **Cold swap, end to end, 2026-11-17**, five aliases: deepseek-v4pro-4b-heretic 6.0 s,
+  qwen35-4b-heretic 6.6 s, hermes3-8b 6.6 s, deepseek-v4pro-9b 9.4 s, dory-4b 9.8 s.
+  All five loaded on the first attempt. The pre-move card column is kept beside it
+  (48–71 s).
+- **A note that the ceilings table is a floor, not a maximum.** The sweep ran under
+  `load-mode = none`; under `dio` the 4B models serve 32768 first try, well past the
+  16384 the sweep called reliable. Re-sweeping under `dio` is listed as open work.
+
+### Known gaps carried forward
+
+- `deepseek-v4pro-4b-heretic` has a cold-swap number but no throughput bench.
+- `llama-cache-guard.timer` runs on the board and is not in this repo.
+
 ## v1.1.0 — 2026-11-15
 
 Autocompact: long chats now fold instead of failing, and the tunnel stops dying.

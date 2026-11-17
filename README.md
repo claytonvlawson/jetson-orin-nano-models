@@ -58,10 +58,17 @@ disk, not the GPU, sets the switch latency. Cold swap, measured end to end on
 | Alias | File | Cold swap |
 |---|---|---|
 | `deepseek-v4pro-4b-heretic` | 2.78 GB | **6.0 s** |
-| `qwen35-4b-heretic` | 2.71 GB | **6.6 s** |
-| `hermes3-8b` | 4.92 GB | **6.6 s** |
-| `deepseek-v4pro-9b` | 5.63 GB | **9.4 s** |
-| `dory-4b` | 3.67 GB | **9.8 s** |
+| `qwen35-4b-heretic` | 2.71 GB | **6.1 - 6.6 s** (3 runs) |
+| `hermes3-8b` | 4.92 GB | **6.4 - 6.6 s** (3 runs) |
+| `deepseek-v4pro-9b` | 5.63 GB | **9.2 - 9.4 s** |
+| `dory-4b` | 3.67 GB | **39 - 42 s** (see below) |
+
+Dory is the outlier and an earlier note claiming 9.8 s for it did not reproduce.
+Three runs gave 41.6, 39.4 and 39.4 s. It is the only alias that costs this much:
+looped architecture, `fa = off` with f16 KV, 2419 MiB of GPU buffers plus 1074 MiB
+of host-side weights. The load immediately *after* Dory can also stall (one
+`hermes3-8b` load took 37.3 s right behind it) while its host buffers are released,
+so do not read a single 40 s number as a disk problem.
 
 Pre-move, on the card: 48.8 s for Dory (measured), 71 s for the 9B and 65 s for the
 8B (from the earlier README, not re-measured). The pre-move column survives in
@@ -513,7 +520,7 @@ spread across runs and re-loads.
 | `hermes3-8b` | Q4_K_M | 8.03 B | 32/33 (ngl 32) | 4096 | 300 → 383 | 10.0 – 10.1 | 65 s | **6.6 s** | 4271 MiB | 264 MiB | 5.4 GB |
 | `deepseek-v4pro-9b` | i1 Q4_K_M | 8.95 B | 28/34 (ngl 28) | 4096 | 251 → 302 | 10.0 – 10.4 | 71 s | **9.4 s** | 4812 MiB | 68 MiB | 5.9 GB |
 | `deepseek-v4pro-4b-heretic` | Q4_K_M | 4 B class | 34/34 (ngl 99) | 32768 | not measured | not measured | — | **6.0 s** | — | — | — |
-| `dory-4b` (2 loops) | Q5_K_M | 4 B | ngl 99 (72 blocks + output) | 4096 | 108–127 → 206 | 6.2 – 6.7 | 48 s | **9.8 s** | 2419 MiB (+1074 host) | 208 MiB | 4.6 GB |
+| `dory-4b` (2 loops) | Q5_K_M | 4 B | ngl 99 (72 blocks + output) | 4096 | 108–127 → 206 | 6.2 – 6.7 | 48 s | **~40 s** | 2419 MiB (+1074 host) | 208 MiB | 4.6 GB |
 | `deepseek-v4pro-9b-q2` *(retired)* | i1 Q2_K | 8.95 B | 34/34 | 77824 | — → 232–240 | 9.8 | 49 s | — | 3321 MiB | 1292 MiB | 5.7 GB |
 
 The throughput, buffer and RSS columns are the original sweep and are unchanged: they
@@ -536,10 +543,11 @@ Reading the table:
 - **Prefill runs 2–3× generation throughput** and rises with prompt length: the 4B
   goes 380 → 474 tok/s between a 514- and a 2203-token prompt.
 - **Cold load is the router's real cost, and the NVMe move paid for itself.** Swapping
-  used to cost 48–71 s of waiting on the microSD; it is now 6.0–9.8 s end to end for
-  every alias (see [Cold loads](#cold-loads-why-the-ggufs-moved-to-nvme)). Anything
-  latency-sensitive should still pin its model rather than let `--models-max 1` evict
-  it, but the penalty for switching is now ~6–10 s, not ~70.
+  used to cost 48–71 s of waiting on the microSD; the dense models now switch in
+  6.1–9.4 s end to end (see [Cold loads](#cold-loads-why-the-ggufs-moved-to-nvme)).
+  Dory is the exception at ~40 s, because its looped forward pass, f16 KV and host-side
+  weights are a heavier load than a straight dense read. Anything latency-sensitive
+  should still pin its model rather than let `--models-max 1` evict it.
 - **KV cost per token**, measured: 17 KiB for the 4B, 66 KiB for the 8B, 17 KiB for
   the 9B (hybrid linear attention), 52 KiB for Dory at f16. That is why the 8B hits
   its wall at 8K while the 9B Q2 reached 76K.
@@ -611,9 +619,9 @@ curl -s http://127.0.0.1:8080/v1/chat/completions \
   -d '{"model":"deepseek-v4pro-9b","messages":[{"role":"user","content":"2+2? Think it through."}],"max_tokens":128}'
 ```
 
-A cold swap costs the full load time of the target model — 6.0 s to 9.8 s measured on
-the NVMe, against 48–71 s when the weights were on the card — and the first request
-after a swap is the slow one. Pin the model if latency matters.
+A cold swap costs the full load time of the target model — 6.1–9.4 s for the dense
+models on the NVMe, ~40 s for Dory, against 48–71 s when the weights were on the card —
+and the first request after a swap is the slow one. Pin the model if latency matters.
 
 To reproduce the numbers rather than just check that it answers:
 

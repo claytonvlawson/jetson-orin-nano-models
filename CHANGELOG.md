@@ -33,9 +33,14 @@ is the correction pass, and several claims in v1.0.0 and v1.1.0 did not survive 
 ### Added (measurements)
 
 - **Cold swap, end to end, 2026-11-17**, five aliases: deepseek-v4pro-4b-heretic 6.0 s,
-  qwen35-4b-heretic 6.6 s, hermes3-8b 6.6 s, deepseek-v4pro-9b 9.4 s, dory-4b 9.8 s.
+  qwen35-4b-heretic 6.1–6.6 s, hermes3-8b 6.4–6.6 s, deepseek-v4pro-9b 9.2–9.4 s.
   All five loaded on the first attempt. The pre-move card column is kept beside it
   (48–71 s).
+- **Dory is the exception, and its first number was wrong.** One run measured 9.8 s
+  and that figure was published; three later runs after a reboot gave 41.6, 39.4 and
+  39.4 s. Looped architecture, `fa = off` with f16 KV, 2419 MiB GPU plus 1074 MiB host
+  weights. The load immediately after Dory can stall too (37.3 s once for hermes3-8b)
+  while its host buffers are released. Both are now in the README as ranges, not points.
 - **A note that the ceilings table is a floor, not a maximum.** The sweep ran under
   `load-mode = none`; under `dio` the 4B models serve 32768 first try, well past the
   16384 the sweep called reliable. Re-sweeping under `dio` is listed as open work.
